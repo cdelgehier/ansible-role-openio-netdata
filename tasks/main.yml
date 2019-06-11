@@ -4,7 +4,9 @@
   with_first_found:
     - "{{ ansible_distribution }}.yml"
     - "{{ ansible_os_family }}.yml"
-  tags: install
+  tags:
+    - install
+    - configure
 
 - name: Install packages
   package:
@@ -27,6 +29,7 @@
     owner: "{{ netdata_user }}"
     group: "{{ netdata_group }}"
     mode: 0640
+  tags: configure
 
 - block:
     - name: Add user netdata to openio group
@@ -34,23 +37,27 @@
         name: "{{ netdata_user }}"
         groups: openio
         append: true
+      tags: configure
 
     - name: "Fetch inventory file"
       fetch:
         src: /etc/oio/sds/{{ openio_netdata_namespace }}/inventory.yml
         dest: "{{ playbook_dir }}/../inventories/{{ ansible_hostname }}.yml"
         flat: true
+      tags: configure
 
     - name: "Load inventory as fact"
       include_vars:
         file: "{{ playbook_dir }}/../inventories/{{ ansible_hostname }}.yml"
         name: "inventory"
       ignore_errors: "{{ ansible_check_mode }}"
+      tags: configure
 
     - name: "Select current namespace in inventory fact"
       set_fact:
         inventory: "{{ inventory.namespaces[openio_netdata_namespace].services }}"
       ignore_errors: "{{ ansible_check_mode }}"
+      tags: configure
 
     - name: "Set commands plugin configuration"
       copy:
@@ -58,6 +65,7 @@
         dest: "{{ openio_netdata_confdir }}/commands.conf"
         owner: "{{ netdata_user }}"
         group: "{{ netdata_group }}"
+      tags: configure
 
     - name: "Set python.d plugin configuration"
       template:
@@ -79,6 +87,7 @@
           dest: "{{ openio_netdata_confdir }}/python.d/beanstalk.conf"
         - src: redis.conf.j2
           dest: "{{ openio_netdata_confdir }}/python.d/redis.conf"
+      tags: configure
   when: inventory_hostname in openio_netdata_oio_hosts
 
 - name: Set oiofs configuration
@@ -89,12 +98,14 @@
     group: "{{ netdata_group }}"
     mode: 0640
   when: inventory_hostname in openio_netdata_oiofs_hosts
+  tags: configure
 
 - block:
     - name: Get S3 credentials on nodes
       slurp:
         src: "{{ openio_netdata_s3rt_aws_creds }}"
       register: s3creds
+      tags: configure
 
     - name: Set S3 roundtrip configuration
       template:
@@ -103,6 +114,7 @@
         owner: "{{ netdata_user }}"
         group: "{{ netdata_group }}"
         mode: 0640
+      tags: configure
   when: inventory_hostname in openio_netdata_s3rt_hosts
 
 - name: Restart netdata
@@ -110,4 +122,5 @@
     name: netdata
     state: "{{ 'restarted' if openio_netdata_provision_only else 'started' }}"
     enabled: "{{ openio_netdata_service_enabled }}"
+  tags: configure
 ...
